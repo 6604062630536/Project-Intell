@@ -14,7 +14,7 @@ import tensorflow as tf
 import cv2 # type: ignore
 from tensorflow import keras
 from tensorflow.keras.models import Sequential , load_model # type: ignore
-from tensorflow.keras.layers import Conv2D, MaxPooling2D, Flatten, Dense , Dropout , BatchNormalization# type: ignore
+from tensorflow.keras.layers import Conv2D, MaxPooling2D, Flatten, Dense , Dropout , BatchNormalization , Input # type: ignore
 from sklearn.preprocessing import LabelEncoder
 from tensorflow.keras import layers , models # type: ignore
 from tensorflow.keras.applications import VGG16 # type: ignore
@@ -612,6 +612,8 @@ def calculate_type_advantage(type1, type2, opponent_type1, opponent_type2, type_
                 (type_effectiveness['Defending Type'] == defense_type)
             ]['Effectiveness'].values
             if len(effectiveness) > 0:
+                if effectiveness[0] == 0:  # ถ้าโจมตีไม่ได้เลย (เช่น Normal → Ghost)
+                    return 0.0
                 advantage *= effectiveness[0]
     return advantage
 
@@ -625,7 +627,8 @@ def clean_data(data):
 # สร้างโมเดล Neural Network
 def build_model(input_shape):
     model = Sequential([
-        Dense(128, activation='relu', input_shape=(input_shape,)),
+        Input(shape=(input_shape,)),  
+        Dense(128, activation='relu'),
         Dropout(0.2),
         Dense(64, activation='relu'),
         Dropout(0.2),
@@ -681,6 +684,10 @@ def predict_pokemon():
         X_train = scaler.fit_transform(X_train)
         X_test = scaler.transform(X_test)
         
+        # แปลงกลับเป็น DataFrame เพื่อให้มีชื่อ Feature
+        X_train = pd.DataFrame(X_train, columns=X.columns)
+        X_test = pd.DataFrame(X_test, columns=X.columns)
+        
         model = build_model(X_train.shape[1])
         model.fit(X_train, y_train, epochs=50, batch_size=16, verbose=0)
         
@@ -692,24 +699,35 @@ def predict_pokemon():
         col1, col2 = st.columns(2)
         with col1:
             st.write(f"**{pokemon1}** Stats:")
-            for stat in ['HP', 'Attack', 'Defense', 'Sp. Atk', 'Sp. Def', 'Speed', 'Total']:
+            for stat in ['Type 1', 'Type 2','HP', 'Attack', 'Defense', 'Sp. Atk', 'Sp. Def', 'Speed', 'Total']:
                 st.write(f"{stat}: {pokemon1_data[stat]}")
         with col2:
             st.write(f"**{pokemon2}** Stats:")
-            for stat in ['HP', 'Attack', 'Defense', 'Sp. Atk', 'Sp. Def', 'Speed', 'Total']:
+            for stat in ['Type 1', 'Type 2','HP', 'Attack', 'Defense', 'Sp. Atk', 'Sp. Def', 'Speed', 'Total']:
                 st.write(f"{stat}: {pokemon2_data[stat]}")
         
         st.write(f"**Type Advantage:** {type_advantage}")
+
         
         if prediction > 0.5:
             st.success(f"{pokemon1} Wins!")
         else:
             st.success(f"{pokemon2} Wins!")
         
+        
         accuracy, loss = model.evaluate(X_test, y_test, verbose=0)
         st.subheader("📊 Model Performance")
+
+        # Pokemon win probability
+        win_probability = prediction * 100
+        st.write(f"**{pokemon1} Win Probability:** {win_probability:.2f}%")
+
+        # Pokemon loss probability
+        loss_probability = (1 - prediction) * 100
+        st.write(f"**{pokemon2} Win Probability:** {loss_probability:.2f}%")
         st.write(f"✅ **Accuracy:** {accuracy:.2f}")
         st.write(f"✅ **Loss:** {loss:.4f}")
+        
 
 def main():
     tf.compat.v1.enable_eager_execution()
