@@ -1,15 +1,30 @@
 import streamlit as st
+import matplotlib.pyplot as plt
+import seaborn as sns
 import pandas as pd
 import plotly.express as px
+import os
 import numpy as np
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.metrics import mean_absolute_error , r2_score
 from sklearn.model_selection import train_test_split 
 from sklearn.linear_model import LinearRegression
+from sklearn.svm import SVR
 import tensorflow as tf
-from tensorflow.keras.models import Sequential  # type: ignore
-from tensorflow.keras.layers import Dense , Dropout , Input # type: ignore
+import cv2 # type: ignore
+from tensorflow import keras
+from tensorflow.keras.models import Sequential , load_model # type: ignore
+from tensorflow.keras.layers import Conv2D, MaxPooling2D, Flatten, Dense , Dropout , BatchNormalization , Input # type: ignore
+from sklearn.preprocessing import LabelEncoder
+from tensorflow.keras import layers , models # type: ignore
+from tensorflow.keras.applications import VGG16 # type: ignore
+from tensorflow.keras.preprocessing import image # type: ignore
+from tensorflow.keras.preprocessing.image import ImageDataGenerator # type: ignore
+from tensorflow.keras.optimizers import Adam # type: ignore
 from sklearn.preprocessing import StandardScaler
+from PIL import Image
+from tensorflow.keras.regularizers import l2 # type: ignore
+from tensorflow.keras.callbacks import EarlyStopping ,LearningRateScheduler # type: ignore
 import requests 
 
 
@@ -627,7 +642,8 @@ def build_model(input_shape):
 def predict_battle(model, pokemon1_stats, pokemon2_stats, type_advantage, scaler):
     features = np.concatenate([pokemon1_stats, pokemon2_stats, [type_advantage]])
     features_scaled = scaler.transform([features])
-    return model.predict(features_scaled)[0][0]
+    prediction = model.predict(features_scaled)
+    return prediction[0][0]
 
 # Streamlit App
 def predict_pokemon():
