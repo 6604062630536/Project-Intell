@@ -449,6 +449,136 @@ This model helps trainers analyze the strengths and weaknesses of Pokémon, allo
         'The model consists of Dense (Fully Connected) Layers with Dropout to reduce overfitting.'
         'StandardScaler is applied to normalize the feature values for better model performance.'
         "The model is trained using HP, Attack, Defense, Speed, Sp. Atk, Sp. Def, Total, and Type Advantage as input features.")
+    st.code ("""# โหลดข้อมูลจากไฟล์ CSV
+@st.cache_data
+def load_data():
+    return pd.read_csv('pokemon.csv')
+
+@st.cache_data
+def load_type_effectiveness():
+    return pd.read_csv('type_effectiveness.csv')
+
+# ดึง URL รูปภาพโปเกมอนจาก PokéAPI
+def get_pokemon_image_url(pokemon_name):
+    url = f"https://pokeapi.co/api/v2/pokemon/{pokemon_name.lower()}"
+    response = requests.get(url)
+    if response.status_code == 200:
+        return response.json()['sprites']['front_default']
+    return None
+
+# คำนวณ Type Advantage
+def calculate_type_advantage(type1, type2, opponent_type1, opponent_type2, type_effectiveness):
+    advantage = 1.0
+    for attack_type in [type1, type2]:
+        if pd.isna(attack_type):
+            continue
+        for defense_type in [opponent_type1, opponent_type2]:
+            if pd.isna(defense_type):
+                continue
+            effectiveness = type_effectiveness[
+                (type_effectiveness['Attacking Type'] == attack_type) &
+                (type_effectiveness['Defending Type'] == defense_type)
+            ]['Effectiveness'].values
+            if len(effectiveness) > 0:
+                advantage *= effectiveness[0]
+    return advantage
+
+# ทำความสะอาดข้อมูล
+def clean_data(data):
+    data = data[['Name', 'Type 1', 'Type 2', 'HP', 'Attack', 'Defense', 'Sp. Atk', 'Sp. Def', 'Speed']]
+    data = data[~data['Name'].str.contains('Mega')]
+    data['Total'] = data[['HP', 'Attack', 'Defense', 'Sp. Atk', 'Sp. Def', 'Speed']].sum(axis=1)
+    return data
+
+# สร้างโมเดล Neural Network
+def build_model(input_shape):
+    model = Sequential([
+        Dense(128, activation='relu', input_shape=(input_shape,)),
+        Dropout(0.2),
+        Dense(64, activation='relu'),
+        Dropout(0.2),
+        Dense(32, activation='relu'),
+        Dense(1, activation='sigmoid')
+    ])
+    model.compile(optimizer='adam', loss='binary_crossentropy', metrics=['accuracy'])
+    return model
+
+# ทำนายผลการต่อสู้
+def predict_battle(model, pokemon1_stats, pokemon2_stats, type_advantage, scaler):
+    features = np.concatenate([pokemon1_stats, pokemon2_stats, [type_advantage]])
+    features_scaled = scaler.transform([features])
+    return model.predict(features_scaled)[0][0]
+
+# Streamlit App
+def predict_pokemon():
+    st.title("Pokemon Battle Predictor ⚔️")
+    data = clean_data(load_data())
+    type_effectiveness = load_type_effectiveness()
+    pokemon_list = data['Name'].unique()
+    
+    pokemon1 = st.selectbox("Select Pokemon 1", pokemon_list)
+    pokemon2 = st.selectbox("Select Pokemon 2", pokemon_list)
+    
+    col1, col2 = st.columns(2)
+    with col1:
+        st.write(f"**{pokemon1}**")
+        image_url1 = get_pokemon_image_url(pokemon1)
+        if image_url1:
+            st.image(image_url1, width=150)
+    with col2:
+        st.write(f"**{pokemon2}**")
+        image_url2 = get_pokemon_image_url(pokemon2)
+        if image_url2:
+            st.image(image_url2, width=150)
+    
+    if pokemon1 and pokemon2:
+        pokemon1_data = data[data['Name'] == pokemon1].iloc[0]
+        pokemon2_data = data[data['Name'] == pokemon2].iloc[0]
+        type_advantage = calculate_type_advantage(
+            pokemon1_data['Type 1'], pokemon1_data['Type 2'],
+            pokemon2_data['Type 1'], pokemon2_data['Type 2'],
+            type_effectiveness
+        )
+        
+        X = pd.concat([data[['HP', 'Attack', 'Defense', 'Sp. Atk', 'Sp. Def', 'Speed', 'Total']]] * 2, axis=1)
+        X['Type Advantage'] = 1.0
+        y = np.random.randint(2, size=len(X))
+        
+        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+        scaler = StandardScaler()
+        X_train = scaler.fit_transform(X_train)
+        X_test = scaler.transform(X_test)
+        
+        model = build_model(X_train.shape[1])
+        model.fit(X_train, y_train, epochs=50, batch_size=16, verbose=0)
+        
+        pokemon1_stats = pokemon1_data[['HP', 'Attack', 'Defense', 'Sp. Atk', 'Sp. Def', 'Speed', 'Total']].values
+        pokemon2_stats = pokemon2_data[['HP', 'Attack', 'Defense', 'Sp. Atk', 'Sp. Def', 'Speed', 'Total']].values
+        prediction = predict_battle(model, pokemon1_stats, pokemon2_stats, type_advantage, scaler)
+        
+        st.subheader("🎮 Battle Prediction")
+        col1, col2 = st.columns(2)
+        with col1:
+            st.write(f"**{pokemon1}** Stats:")
+            for stat in ['HP', 'Attack', 'Defense', 'Sp. Atk', 'Sp. Def', 'Speed', 'Total']:
+                st.write(f"{stat}: {pokemon1_data[stat]}")
+        with col2:
+            st.write(f"**{pokemon2}** Stats:")
+            for stat in ['HP', 'Attack', 'Defense', 'Sp. Atk', 'Sp. Def', 'Speed', 'Total']:
+                st.write(f"{stat}: {pokemon2_data[stat]}")
+        
+        st.write(f"**Type Advantage:** {type_advantage}")
+        
+        if prediction > 0.5:
+            st.success(f"{pokemon1} Wins!")
+        else:
+            st.success(f"{pokemon2} Wins!")
+        
+        accuracy, loss = model.evaluate(X_test, y_test, verbose=0)
+        st.subheader("📊 Model Performance")
+        st.write(f"✅ **Accuracy:** {accuracy:.2f}")
+        st.write(f"✅ **Loss:** {loss:.4f}")
+""")
 
 
 # โหลดข้อมูลจากไฟล์ CSV
