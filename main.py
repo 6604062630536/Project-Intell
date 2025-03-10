@@ -15,7 +15,7 @@ import cv2 # type: ignore
 from tensorflow import keras
 from tensorflow.keras.models import Sequential , load_model # type: ignore
 from tensorflow.keras.layers import Conv2D, MaxPooling2D, Flatten, Dense , Dropout , BatchNormalization , Input # type: ignore
-from sklearn.preprocessing import LabelEncoder
+from sklearn.preprocessing import LabelEncoder, OneHotEncoder, RobustScaler
 from tensorflow.keras import layers , models # type: ignore
 from tensorflow.keras.applications import VGG16 # type: ignore
 from tensorflow.keras.preprocessing import image # type: ignore
@@ -405,7 +405,7 @@ def pokedex():
     st.title("Predict Pokemon")
     st.subheader("Purpose")
     purpose = '''The goal of this project is to predict the outcome of a Pokémon battle based on various attributes such as HP, Attack, Defense, Speed, and Type Advantage.
-This model helps trainers analyze the strengths and weaknesses of Pokémon, allowing them to make better strategic decisions during battles.'''
+    This model helps trainers analyze the strengths and weaknesses of Pokémon, allowing them to make better strategic decisions during battles.'''
     st.write(purpose)
     
     st.subheader("Problem Type")
@@ -582,16 +582,21 @@ def predict_pokemon():
 """)
 
 
-# โหลดข้อมูลจาก CSV
+# Load Pokémon data
 @st.cache_data
 def load_data():
     return pd.read_csv('pokemon.csv')
+
+@st.cache_data
+def load_battle_data():
+    return pd.read_csv('pokemon_battles.csv')
 
 @st.cache_data
 def load_type_effectiveness():
     return pd.read_csv('type_effectiveness.csv')
 
 # ดึง URL รูปภาพโปเกมอนจาก PokéAPI
+# ดึงรูปภาพ
 def get_pokemon_image_url(pokemon_name):
     url = f"https://pokeapi.co/api/v2/pokemon/{pokemon_name.lower()}"
     response = requests.get(url)
@@ -599,212 +604,162 @@ def get_pokemon_image_url(pokemon_name):
         return response.json()['sprites']['front_default']
     return None
 
-# คำนวณ Type Advantage
-def calculate_type_advantage(type1, type2, opponent_type1, opponent_type2, type_effectiveness):
-    advantage = 1.0
-    for attack_type in [type1, type2]:
-        if pd.isna(attack_type):
-            continue
-        for defense_type in [opponent_type1, opponent_type2]:
-            if pd.isna(defense_type):
-                continue
-            effectiveness = type_effectiveness[
-                (type_effectiveness['Attacking Type'] == attack_type) & 
-                (type_effectiveness['Defending Type'] == defense_type)
-            ]['Effectiveness'].values
-            if len(effectiveness) > 0:
-                if effectiveness[0] == 0:
-                    return 0.0
-                advantage *= effectiveness[0]
-    return advantage
 
-def calculate_battle_advantage(pokemon1_data, pokemon2_data, type_advantage):
-    # คำนวณความได้เปรียบจาก Type
-    type_adv = type_advantage
 
-    # คำนวณความได้เปรียบจาก Attack/Defense
-    # สมมติว่าการโจมตีของ Pokémon 1 ใช้ Attack กับ Defense ของ Pokémon 2
-    attack_advantage = pokemon1_data['Attack'] / (pokemon2_data['Defense'] + 1)  # +1 เพื่อป้องกันการหารด้วย 0
-    # สำหรับ Sp. Atk กับ Sp. Def
-    special_attack_advantage = pokemon1_data['Sp. Atk'] / (pokemon2_data['Sp. Def'] + 1)
+# เตรียมข้อมูลเพื่อใช้ในการฝึกโมเดล
+def prepare_data(pokemon_data, battle_data):
+    """ เตรียมข้อมูลสำหรับเทรนโมเดล """
     
-    # คำนวณความได้เปรียบรวม
-    total_advantage = (attack_advantage + special_attack_advantage) * type_adv
-    return total_advantage
+    # รวมข้อมูลการต่อสู้เข้ากับข้อมูลโปเกมอน
+    merged = battle_data.merge(pokemon_data, left_on="Pokemon_1", right_on="Name")
+    merged = merged.merge(pokemon_data, left_on="Pokemon_2", right_on="Name", suffixes=("_p1", "_p2"))
 
-# คำนวณ Speed Advantage
-def calculate_speed_advantage(pokemon1_speed, pokemon2_speed):
-    if pokemon1_speed > pokemon2_speed:
-        return 1.0  # Pokémon 1 ได้โจมตีก่อน
-    elif pokemon1_speed < pokemon2_speed:
-        return 0.0  # Pokémon 2 ได้โจมตีก่อน
-    else:
-        return 0.5  # เสมอกัน
-# คำนวณ Total Stat Advantage
-def calculate_stat_advantage(pokemon1_total_stat, pokemon2_total_stat):
-    if abs(pokemon1_total_stat - pokemon2_total_stat) > 200:
-        if pokemon1_total_stat > pokemon2_total_stat:
-            return 1  # Pokemon 1 wins
-        else:
-            return 0  # Pokemon 2 wins
-    return None  # ไม่สามารถตัดสินได้จาก Total Stat
+    # สร้างฟีเจอร์ใหม่
+    merged["Stat_Diff"] = merged["Total_p1"] - merged["Total_p2"]
+    merged["Speed_Diff"] = merged["Speed_p1"] - merged["Speed_p2"]
+    
+    # แปลง Winner ให้เป็นตัวเลข
+    merged["Winner"] = merged.apply(lambda row: 1 if row["Winner"] == row["Pokemon_1"] else 0, axis=1)
 
-# ทำความสะอาดข้อมูล
-def clean_data(data):
-    data = data[['Name', 'Type 1', 'Type 2', 'HP', 'Attack', 'Defense', 'Sp. Atk', 'Sp. Def', 'Speed']]
-    data['Type 2'] = data['Type 2'].fillna('None')
-    data = data[~data['Name'].str.contains('Mega')]
-    data['Total'] = data[['HP', 'Attack', 'Defense', 'Sp. Atk', 'Sp. Def', 'Speed']].sum(axis=1)
-    return data
+    # One-Hot Encoding ประเภทของ Pokémon
+    encoder = OneHotEncoder(handle_unknown='ignore', sparse_output=False)
+    type_features = encoder.fit_transform(merged[['Type 1_p1', 'Type 2_p1', 'Type 1_p2', 'Type 2_p2']])
+
+    # ฟีเจอร์ที่ใช้ในการ Train
+    stat_speed_features = merged[["Stat_Diff", "Speed_Diff"]].values
+    # แก้ไข: ต้องแน่ใจว่า stat_speed_features เป็น 2D array ก่อน
+    features = np.hstack((stat_speed_features, type_features))
+
+    labels = merged["Winner"].values  # Pokémon 1 ชนะ = 1, แพ้ = 0
+    
+    return features, labels, encoder
 
 # สร้างโมเดล Neural Network
 def build_model(input_shape):
+    """ สร้างโมเดล Neural Network """
     model = Sequential([
         Input(shape=(input_shape,)),
-        Dense(512, kernel_regularizer=l2(0.001)),  # เพิ่มขนาด Layer
-        LeakyReLU(alpha=0.3),  # ใช้ Leaky ReLU แทน ReLU
-        BatchNormalization(),
-        Dropout(0.5),  # เพิ่ม Dropout
-        Dense(256, kernel_regularizer=l2(0.001)),  # เพิ่มขนาด Layer
-        LeakyReLU(alpha=0.3),  # ใช้ Leaky ReLU แทน ReLU
-        BatchNormalization(),
-        Dropout(0.4),
-        Dense(128, kernel_regularizer=l2(0.001)),
-        LeakyReLU(alpha=0.3),  # ใช้ Leaky ReLU แทน ReLU
-        BatchNormalization(),
-        Dropout(0.4),
-        Dense(64),
+        Dense(128, activation='relu'),
+        Dense(64, activation='relu'),
+        Dense(32, activation='relu'),
         Dense(1, activation='sigmoid')
     ])
-    
-    optimizer = Adam(learning_rate=0.001)  # เพิ่ม Learning Rate
-    model.compile(optimizer=optimizer, loss='binary_crossentropy', metrics=['accuracy'])
+    model.compile(optimizer='adam', loss='binary_crossentropy', metrics=['accuracy'])
     return model
 
-# ทำนายผลการต่อสู้
-# คำนวณผลการต่อสู้
-def predict_battle_with_stat_advantage(model, pokemon1_data, pokemon2_data, type_advantage, speed_advantage, scaler):
-    pokemon1_total_stat = pokemon1_data['Total']
-    pokemon2_total_stat = pokemon2_data['Total']
+# โหลดข้อมูล
+pokemon_data = load_data()
+battle_data = load_battle_data()
 
-    # คำนวณผลการต่อสู้จาก Total Stat
-    stat_advantage = calculate_stat_advantage(pokemon1_total_stat, pokemon2_total_stat)
+# เตรียมข้อมูลและได้ encoder กลับมาด้วย
+X, y, encoder = prepare_data(pokemon_data, battle_data)
 
-    # ถ้ามีการตัดสินจาก Total Stat โดยอัตโนมัติ
-    if stat_advantage is not None:
-        return stat_advantage  # 1 หรือ 0 ขึ้นอยู่กับว่าใครชนะจาก Total Stat
+# แบ่งข้อมูลเป็น Train และ Test
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+y_train = y_train.astype(np.float32)
+y_test = y_test.astype(np.float32)
 
-    # ถ้าไม่สามารถตัดสินจาก Total Stat ให้คำนวณจากข้อมูลอื่นๆ
-    pokemon1_stats = pokemon1_data[['HP', 'Attack', 'Defense', 'Sp. Atk', 'Sp. Def', 'Speed', 'Total']].values
-    pokemon2_stats = pokemon2_data[['HP', 'Attack', 'Defense', 'Sp. Atk', 'Sp. Def', 'Speed', 'Total']].values
-    features = np.concatenate([pokemon1_stats, pokemon2_stats, [type_advantage], [speed_advantage]])
+# Normalize ข้อมูล
+scaler = StandardScaler()
+X_train = scaler.fit_transform(X_train)
+X_test = scaler.transform(X_test)
 
-    # สเกลข้อมูล
-    features_scaled = scaler.transform([features])
-    prediction = model.predict(features_scaled)
+# สร้างและ Train โมเดล
+model = build_model(X_train.shape[1])
+model.fit(X_train, y_train, epochs=30, batch_size=32, validation_data=(X_test, y_test), verbose=1)
+
+# ทดสอบโมเดล
+loss, accuracy = model.evaluate(X_test, y_test)
+st.write(f"🎯 Model Accuracy: {accuracy:.2%}")
+
+# ฟังก์ชันทำนายผลการต่อสู้ระหว่าง Pokémon
+def predict_battle(pokemon1, pokemon2, encoder, model, scaler):
+    """ ทำนายผลการต่อสู้ระหว่าง Pokémon """
+    progress_bar = st.progress(0)
+    # ดึงข้อมูลโปเกมอน 2 ตัวจาก DataFrame
+    p1 = pokemon_data[pokemon_data['Name'] == pokemon1].iloc[0]
+    p2 = pokemon_data[pokemon_data['Name'] == pokemon2].iloc[0]
+
+    # คำนวณความแตกต่างของ Stat
+    stat_diff = p1['Total'] - p2['Total']
+    speed_diff = p1['Speed'] - p2['Speed']
+
+    progress_bar.progress(25)
+
+    # แปลง Type เป็น One-Hot Encoding โดยใช้ encoder ที่ฝึกไว้แล้ว
+    type_features = encoder.transform([[p1['Type 1'], p1['Type 2'], p2['Type 1'], p2['Type 2']]])
+
+    # แปลง stat_diff และ speed_diff ให้เป็น 2D array เพื่อใช้ hstack ได้
+    stat_speed_diff = np.array([[stat_diff, speed_diff]])  # ใช้ reshape(-1, 1) เพื่อให้เป็น 2D
+
+    # รวมฟีเจอร์
+    features = np.hstack((stat_speed_diff, type_features))  # ใช้ np.hstack เพื่อรวมฟีเจอร์
+
+    # ตรวจสอบจำนวนฟีเจอร์ให้ตรงกับจำนวนใน X_train
+    if features.shape[1] != X_train.shape[1]:
+        raise ValueError(f"จำนวนฟีเจอร์ไม่ตรงกัน! ขณะนี้มี {features.shape[1]} ฟีเจอร์ แต่ X_train มี {X_train.shape[1]} ฟีเจอร์")
+
+    # ปรับขนาดฟีเจอร์ให้ตรงกับที่ฝึก
+    features = scaler.transform(features)
+
+    progress_bar.progress(75)
+
+    # ทำนายผลลัพธ์
+    prediction = model.predict(features)[0][0]
+
+    progress_bar.progress(100)
     
-    return prediction[0][0]
+    return pokemon1 if prediction > 0.5 else pokemon2
 
-# Streamlit App
+# ฟังก์ชันสำหรับ Streamlit UI
 def predict_pokemon():
+    # Streamlit UI
     st.title("Pokemon Battle Predictor ⚔️")
-    data = clean_data(load_data())
-    type_effectiveness = load_type_effectiveness()
-    pokemon_list = data['Name'].unique()
+
+    pokemon_list = pokemon_data['Name'].unique()
+
+    #exclude mega evolution pokemon
+    pokemon_list = [pokemon for pokemon in pokemon_list if 'Mega' not in pokemon]
 
     pokemon1 = st.selectbox("Select Pokemon 1", pokemon_list)
     pokemon2 = st.selectbox("Select Pokemon 2", pokemon_list)
 
+    # คอลัมน์สำหรับแสดงสถิติ
     col1, col2 = st.columns(2)
+
+    st.subheader("🎮 Battle Prediction")
+    
     with col1:
-        st.write(f"**{pokemon1}**")
-        image_url1 = get_pokemon_image_url(pokemon1)
-        if image_url1:
-            st.image(image_url1, width=150)
+        # แสดงรูปภาพของ Pokémon 1
+        img_url1 = get_pokemon_image_url(pokemon1)
+        if img_url1:
+            st.image(img_url1, caption=f"{pokemon1} Image", use_container_width=True)
+
+        st.write(f"**{pokemon1}** Stats:")
+        pokemon1_data = pokemon_data[pokemon_data['Name'] == pokemon1].iloc[0]
+        for stat in ['Type 1', 'Type 2', 'HP', 'Attack', 'Defense', 'Sp. Atk', 'Sp. Def', 'Speed', 'Total']:
+            st.write(f"{stat}: {pokemon1_data[stat]}")
+
     with col2:
-        st.write(f"**{pokemon2}**")
-        image_url2 = get_pokemon_image_url(pokemon2)
-        if image_url2:
-            st.image(image_url2, width=150)
+        # แสดงรูปภาพของ Pokémon 2
+        img_url2 = get_pokemon_image_url(pokemon2)
+        if img_url2:
+            st.image(img_url2, caption=f"{pokemon2} Image", use_container_width=True)
+        
+        st.write(f"**{pokemon2}** Stats:")
+        pokemon2_data = pokemon_data[pokemon_data['Name'] == pokemon2].iloc[0]
+        for stat in ['Type 1', 'Type 2', 'HP', 'Attack', 'Defense', 'Sp. Atk', 'Sp. Def', 'Speed', 'Total']:
+            st.write(f"{stat}: {pokemon2_data[stat]}")
 
     if pokemon1 and pokemon2:
-        pokemon1_data = data[data['Name'] == pokemon1].iloc[0]
-        pokemon2_data = data[data['Name'] == pokemon2].iloc[0]
-        type_advantage = calculate_type_advantage(
-            pokemon1_data['Type 1'], pokemon1_data['Type 2'],
-            pokemon2_data['Type 1'], pokemon2_data['Type 2'],
-            type_effectiveness
-        )
-        speed_advantage = calculate_speed_advantage(pokemon1_data['Speed'], pokemon2_data['Speed'])
-
-        data = clean_data(load_data())
-
-        # สร้าง features X จากข้อมูลโปเกมอน
-        X = pd.concat([data[['HP', 'Attack', 'Defense', 'Sp. Atk', 'Sp. Def', 'Speed', 'Total']]] * 2, axis=1)
-        X['Type Advantage'] = np.random.uniform(0.5, 2.0, len(X))  
-        X['Speed Advantage'] = np.random.uniform(0.5, 1.5, len(X))  # เพิ่ม Speed Advantage ในฟีเจอร์
-
-        # สร้าง Label y (1 = Pokémon 1 ชนะ, 0 = Pokémon 2 ชนะ)
-        y = (X.iloc[:, :7].sum(axis=1) > X.iloc[:, 7:14].sum(axis=1)).astype(int)
-
-        # Data Augmentation - สลับตำแหน่ง Pokémon
-        X_aug = X.copy()
-        X_aug.iloc[:, :7], X_aug.iloc[:, 7:14] = X.iloc[:, 7:14].values, X.iloc[:, :7].values
-        y_aug = 1 - y
-        X = pd.concat([X, X_aug])
-        y = np.concatenate([y, y_aug])
-
-        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3, random_state=42)
-        scaler = StandardScaler()
-        X_train = scaler.fit_transform(X_train)
-        X_test = scaler.transform(X_test)
-        early_stopping = EarlyStopping(monitor='val_loss', patience=20, restore_best_weights=True)
-        lr_scheduler = ReduceLROnPlateau(monitor='val_loss', factor=0.5, patience=10, min_lr=0.00001)
-        # สร้างโมเดลใหม่ทุกครั้ง
-        model = build_model(X_train.shape[1])
-
-        # เทรนโมเดล
-        # เทรนโมเดล
-        model.fit(X_train, y_train, epochs=100, batch_size=32,
-          validation_data=(X_test, y_test), 
-          callbacks=[early_stopping, lr_scheduler], verbose=2)
-
-        # บันทึกโมเดลทุกครั้ง
-        model.save("pokemon_model.h5")
-
-        prediction = predict_battle_with_stat_advantage(model, pokemon1_data, pokemon2_data, type_advantage, speed_advantage, scaler)
+        winner = predict_battle(pokemon1, pokemon2, encoder, model, scaler)
+        st.subheader(f"🏆 Winner: {winner}")
 
 
-        st.subheader("🎮 Battle Prediction")
-        col1, col2 = st.columns(2)
-        with col1:
-            st.write(f"**{pokemon1}** Stats:")
-            for stat in ['Type 1', 'Type 2', 'HP', 'Attack', 'Defense', 'Sp. Atk', 'Sp. Def', 'Speed', 'Total']:
-                st.write(f"{stat}: {pokemon1_data[stat]}")
-        with col2:
-            st.write(f"**{pokemon2}** Stats:")
-            for stat in ['Type 1', 'Type 2', 'HP', 'Attack', 'Defense', 'Sp. Atk', 'Sp. Def', 'Speed', 'Total']:
-                st.write(f"{stat}: {pokemon2_data[stat]}")
-
-        st.write(f"**Type Advantage:** {type_advantage:.2f}")
-        st.write(f"**Speed Advantage:** {speed_advantage:.2f}")
-
-        # แสดงผลลัพธ์
-        if prediction == 1:
-            st.success(f"{pokemon1} Wins!")
-            st.error(f"{pokemon2} Loses!")
-        else:
-            st.success(f"{pokemon2} Wins!")
-            st.error(f"{pokemon1} Loses!")
-
-        loss, accuracy = model.evaluate(X_test, y_test, verbose=0)
-        train = model.evaluate(X_train, y_train, verbose=0)
-        st.subheader("📊 Model Performance")
-        st.write(f"✅ **Test Accuracy:** {accuracy:.2f}")
-        st.write(f"✅ **Train Accuracy:** {train[1]:.2f}")
-        st.write(f"✅ **Accuracy:** {accuracy:.2f}")
-        st.write(f"✅ **Loss:** {loss:.4f}")
-
+    # แสดงผลการทำงานของโมเดล
+    st.subheader("Model Performance")
+    st.write(f"🎯 Model Accuracy: {accuracy:.2%}")
+    st.write(f"🎯 Model Loss: {loss:.4f}")
 
         
 
