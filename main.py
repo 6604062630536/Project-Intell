@@ -1,34 +1,18 @@
 import streamlit as st
-import matplotlib.pyplot as plt
-import seaborn as sns
 import pandas as pd
 import plotly.express as px
-import os
 import numpy as np
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.metrics import mean_absolute_error , r2_score
 from sklearn.model_selection import train_test_split 
 from sklearn.linear_model import LinearRegression
-from sklearn.svm import SVR
 import tensorflow as tf
-import cv2 # type: ignore
 from tensorflow import keras
-from tensorflow.keras.models import Sequential , load_model # type: ignore
-from tensorflow.keras.layers import Conv2D, MaxPooling2D, Flatten, Dense , Dropout , BatchNormalization , Input # type: ignore
-from sklearn.preprocessing import LabelEncoder, OneHotEncoder, RobustScaler
-from tensorflow.keras import layers , models # type: ignore
-from tensorflow.keras.applications import VGG16 # type: ignore
-from tensorflow.keras.preprocessing import image # type: ignore
-from tensorflow.keras.preprocessing.image import ImageDataGenerator # type: ignore
-from tensorflow.keras.optimizers import Adam # type: ignore
+from tensorflow.keras.models import Sequential # type: ignore
+from tensorflow.keras.layers import Dense , Input # type: ignore
+from sklearn.preprocessing import  OneHotEncoder
 from sklearn.preprocessing import StandardScaler
-from PIL import Image
-from tensorflow.keras.regularizers import l2 # type: ignore
-from tensorflow.keras.callbacks import EarlyStopping ,LearningRateScheduler # type: ignore
 import requests 
-import plotly.graph_objects as go
-from tensorflow.keras.layers import LeakyReLU # type: ignore
-from tensorflow.keras.callbacks import ReduceLROnPlateau # type: ignore
 
 # ฟังก์ชันหลักที่เลือกหน้าจากเมนู
 def home():
