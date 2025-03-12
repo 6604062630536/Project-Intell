@@ -526,7 +526,7 @@ The training process involves splitting the dataset into a training set and a te
     eva = '''The model's performance is evaluated using the following metrics:\n
 •	Accuracy: The percentage of correct predictions (how often the model predicts the correct winner).\n
 •	Loss: The binary cross-entropy loss, which gives an indication of how well the model is fitting the data.\n
-    Both metrics are displayed in the user interface, allowing users to assess the model’s performance.'''
+Both metrics are displayed in the user interface, allowing users to assess the model’s performance.'''
     st.markdown(eva)
 # ------------------------------------------
 # โหลดข้อมูล
