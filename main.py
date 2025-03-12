@@ -24,44 +24,13 @@ def home():
         Several factors contribute to this, such as the genre of the game, the player's country, the game's price, and the platform. 
         This model aims to :green[Predict the Global Sales of a game based on characteristics such as release year, genre, platform, publisher, etc.], providing valuable insights for game developers.'''
     st.write(purpose)
-
-    st.subheader("Market Analysis & Trends:")
-    market = '''
-        • Identify best-selling genres and platforms over the years.
-
-        • Analyze the impact of publishers on sales performance.
-
-        • Track sales trends across regions (NA, EU, JP, Other).
-        '''
-    st.markdown(market)
-
-    st.subheader("Predictive Analytics & Forecasting:")
-    preanal = '''
-        • Build models to predict future game sales based on historical data.
-
-        • Identify factors influencing high sales: platform, genre, publisher.'''
-    st.markdown(preanal)
-
-    st.subheader("Business Strategy & Game Development:")
-    strategy = '''
-        • Help game developers understand what type of games sell best.
-
-        • Guide marketing strategies by targeting specific regions with high demand.'''
-    st.markdown(strategy)
-
-    st.subheader("Comparative Analysis:")
-    comparative = '''
-        • Compare sales performance of different gaming platforms (PlayStation, Xbox, Wii).
-
-        • Evaluate how different game publishers perform in various markets.'''
-    st.markdown(comparative)
-
     st.subheader("Problem Type")
     problem_type = '''
         • **Regression Problem**: Predict the total sales (global or regional) of a game based on its attributes, using numerical values for sales predictions.'''
     st.markdown(problem_type)
-
     st.subheader("Data Used")
+    st.write("The dataset come form :blue[https://www.kaggle.com/gregorut/videogamesales].")
+    st.write("The dataset contains :green[16,598] rows and :green[11 columns.]")
     data_used = '''
         The dataset contains various features related to video game sales and characteristics. The features include:
 
@@ -78,10 +47,6 @@ def home():
         - **Global_Sales**: Total worldwide sales (in millions).
         '''
     st.markdown(data_used)
-
-    st.subheader("Data Exploration") 
-    st.write("The dataset come form :blue[https://www.kaggle.com/gregorut/videogamesales].")
-    st.write("The dataset contains :green[16,598] rows and :green[11 columns.]")
     st.subheader("Missing Values")
     st.write("Year has :red[271] missing values. Publisher has :red[58] missing values.")
     st.subheader("Data Cleaning")
@@ -399,6 +364,7 @@ def pokedex():
     st.subheader("Data Used")
     data_used = '''
         1.Pokémon images come from: :blue[https://pokeapi.co/.]\n
+        \n
         2.:green[pokemon.csv] this datasets come from :blue[https://www.kaggle.com/datasets/abcsds/pokemon]\n
         This dataset contains :green[721 rows] and :green[9 columns] with various features related to Pokémon attributes and evolution. The features include:\n
         -**#** : A unique identifier for each Pokémon.\n
@@ -448,6 +414,17 @@ Preprocessing:\n
 \n•	StandardScaler is applied to scale the numeric features so that all features have a similar scale, which improves the model's convergence during training.
 '''
     st.markdown(prepo)
+    st.code('''def prepare_training_data():
+    battle_df = load_battle_features()
+    numeric_features = battle_df[["Total_p1", "Speed_p1", "Total_p2", "Speed_p2"]].values
+    categorical_cols = ["Type1_p1", "Type2_p1", "Type1_p2", "Type2_p2"]
+    cat_data = battle_df[categorical_cols].fillna("Unknown").astype(str)
+    encoder = OneHotEncoder(handle_unknown='ignore', sparse_output=False)
+    cat_features = encoder.fit_transform(cat_data)
+    X = np.hstack((numeric_features, cat_features))
+    y = battle_df["Winner"].values.astype(np.float32)
+    return X, y, encoder ''', language="python")
+
     st.subheader("Model Architerture")
     moar = '''A Neural Network (NN) is chosen for this task due to its capability to learn complex relationships between the features. The model consists of the following components:\n
 •	Input Layer: Takes the input features, which include both numeric (Total, Speed) and encoded categorical data (Pokémon types).\n
@@ -456,6 +433,17 @@ Preprocessing:\n
 •	Output Layer: The model has a single unit in the output layer with a Sigmoid activation function, which produces a probability value between 0 and 1. This value represents the likelihood of Pokémon 1 winning the battle. If the output value is greater than 0.5, Pokémon 1 is predicted to win; otherwise, Pokémon 2 is predicted to win.\n
 '''
     st.markdown(moar)
+    st.code(''' def build_model(input_shape):
+    model = Sequential([
+        Input(shape=(input_shape,)),
+        Dense(128, activation="relu"),
+        Dense(64, activation="relu"),
+        Dense(32, activation="relu"),
+        Dense(1, activation="sigmoid")
+    ])
+    model.compile(optimizer="adam", loss="binary_crossentropy", metrics=["accuracy"])
+    return model ''', language="python")
+
     st.subheader("Model Training")
     mt = '''The model is trained using a binary classification approach, where the goal is to predict the winner of the battle. The steps in training the model are as follows:\n
 •	Loss Function: The model uses binary cross-entropy as the loss function, which is appropriate for binary classification problems. It measures the difference between the predicted probabilities and the actual outcomes (0 or 1).\n
@@ -464,12 +452,75 @@ Preprocessing:\n
 The training process involves splitting the dataset into a training set and a test set (80% for training and 20% for testing), scaling the features, and fitting the model to the training data. The model is then evaluated on the test set to determine its performance.\n
 '''
     st.markdown(mt)
+    st.code('''def train_model():
+    X, y, enc = prepare_training_data()
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+    scaler = StandardScaler()
+    X_train = scaler.fit_transform(X_train)
+    X_test = scaler.transform(X_test)
+    mdl = build_model(X_train.shape[1])
+    mdl.fit(X_train, y_train, epochs=10, batch_size=64, validation_data=(X_test, y_test), verbose=1)
+    loss, acc = mdl.evaluate(X_test, y_test)
+    return mdl, scaler, enc, acc, loss''' , language="python")
     st.subheader("Prediction")
     pdt = '''Once the model is trained, it can be used to predict the outcome of a Pokémon battle. Given two Pokémon, the following steps occur during prediction:\n
 1.	Input Features: The input consists of the Pokémon’s stats (Total and Speed) and types. The types are encoded using the one-hot encoder, and the numeric features are scaled using the trained scaler.\n
 2.	Model Prediction: The processed input features are passed through the trained neural network to get the predicted probability of Pokémon 1 winning.\n
 3.	Winner Determination: If the predicted probability is greater than 0.5, Pokémon 1 is predicted to win; otherwise, Pokémon 2 is predicted to win.'''
     st.markdown(pdt)
+    st.code('''def predict_pokemon():
+    st.title("Pokemon Battle Predictor ⚔️")
+    pokemon_data = load_pokemon_data()
+    pokemon_list = pokemon_data['Name'].unique()
+
+    pokemon_list = [p for p in pokemon_list if 'Mega' not in p]
+    pokemon1 = st.selectbox("Select Pokemon 1", pokemon_list)
+    pokemon2 = st.selectbox("Select Pokemon 2", pokemon_list)
+    
+    col1, col2 = st.columns(2)
+    st.subheader("🎮 Battle Prediction")
+    
+    with col1:
+        img_url1 = get_pokemon_image_url(pokemon1)
+        if img_url1:
+            st.image(img_url1, caption=f"{pokemon1} Image", use_container_width=True)
+        st.write(f"**{pokemon1}** Stats:")
+        p1_data = pokemon_data[pokemon_data['Name'] == pokemon1].iloc[0]
+        for stat in ['Type 1', 'Type 2', 'HP', 'Attack', 'Defense', 'Sp. Atk', 'Sp. Def', 'Speed', 'Total']:
+            st.write(f"{stat}: {p1_data[stat]}")
+    
+    with col2:
+        img_url2 = get_pokemon_image_url(pokemon2)
+        if img_url2:
+            st.image(img_url2, caption=f"{pokemon2} Image", use_container_width=True)
+        st.write(f"**{pokemon2}** Stats:")
+        p2_data = pokemon_data[pokemon_data['Name'] == pokemon2].iloc[0]
+        for stat in ['Type 1', 'Type 2', 'HP', 'Attack', 'Defense', 'Sp. Atk', 'Sp. Def', 'Speed', 'Total']:
+            st.write(f"{stat}: {p2_data[stat]}")
+    
+    
+    if not st.session_state.model_trained:
+        if st.button("Start Battle"):
+            with st.spinner("Training model..."):
+                mdl, scl, enc, acc, loss = train_model()
+                st.session_state.model_obj = mdl
+                st.session_state.scaler_obj = scl
+                st.session_state.encoder_obj = enc
+                st.session_state.model_accuracy = acc
+                st.session_state.model_loss = loss
+                st.session_state.model_trained = True
+                st.success("Model training completed!")
+    else:
+        st.write("Model already trained.")
+    
+    
+    winner = predict_battle(pokemon1, pokemon2, st.session_state.encoder_obj, st.session_state.model_obj, st.session_state.scaler_obj)
+    st.subheader(f"🏆 Winner: {winner}")
+    
+    st.write(f"🎯 Model Accuracy: {st.session_state.model_accuracy:.2%}")
+    st.write(f"🎯 Model Loss: {st.session_state.model_loss:.4f}")
+    else:
+        st.write("Model not trained yet.")''' , language="python")
 
     st.subheader("Model Evaluation")
     eva = '''The model's performance is evaluated using the following metrics:\n
