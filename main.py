@@ -543,8 +543,6 @@ def train_model():
     mdl = build_model(X_train.shape[1])
     mdl.fit(X_train, y_train, epochs=10, batch_size=64, validation_data=(X_test, y_test), verbose=1)
     loss, acc = mdl.evaluate(X_test, y_test)
-    st.write(f"🎯 Model Accuracy: {acc:.2%}")
-    st.write(f"🎯 Model Loss: {loss:.4f}")
     return mdl, scaler, enc, acc, loss
 
 # ------------------------------------------
