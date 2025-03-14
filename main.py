@@ -429,7 +429,6 @@ Preprocessing:\n
     moar = '''A Neural Network (NN) is chosen for this task due to its capability to learn complex relationships between the features. The model consists of the following components:\n
 •	Input Layer: Takes the input features, which include both numeric (Total, Speed) and encoded categorical data (Pokémon types).\n
 •	Hidden Layers: The model contains three fully connected Dense layers with ReLU activation functions, which help in learning non-linear relationships between the input features and the target. The layers have 128, 64, and 32 units respectively. These layers are used to learn the underlying patterns in the data and the interactions between the different Pokémon attributes.\n
-•	Dropout: While not explicitly stated in the provided code, Dropout is a regularization technique that can be added to reduce overfitting by randomly disabling some neurons during training. This helps the model generalize better to unseen data.\n
 •	Output Layer: The model has a single unit in the output layer with a Sigmoid activation function, which produces a probability value between 0 and 1. This value represents the likelihood of Pokémon 1 winning the battle. If the output value is greater than 0.5, Pokémon 1 is predicted to win; otherwise, Pokémon 2 is predicted to win.\n
 '''
     st.markdown(moar)

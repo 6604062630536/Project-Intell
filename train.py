@@ -2,10 +2,8 @@ import pandas as pd
 import numpy as np
 import random
 
-# โหลดข้อมูล Pokémon (ตัวอย่างนี้ใช้ข้อมูลทั้งหมดหรืออาจกรองเฉพาะ Gen 1-3 หากมีคอลัมน์ Generation)
+# โหลดข้อมูล Pokémon
 pokemon_data = pd.read_csv("pokemon.csv")
-# ถ้าต้องการเฉพาะ Gen 1-3 uncomment บรรทัดด้านล่าง:
-# pokemon_data = pokemon_data[pokemon_data['Generation'] <= 3]
 
 # เลือกเฉพาะฟีเจอร์ที่จำเป็น
 pokemon_data = pokemon_data[['Name', 'Total', 'Type 1', 'Type 2', 'Speed']]
@@ -70,7 +68,7 @@ for i in range(num_pokemon):
             win_probability = 0.0
             winner_label = 0  # หมายความว่า p2 ชนะ
         else:
-            # คำนวณโอกาสชนะจากข้อมูล (ใช้สมการที่คำนวณจาก Stat, Type และ Speed)
+            # คำนวณโอกาสชนะจากข้อมูล ใช้สมการที่คำนวณจาก Stat, Type และ Speed
             win_probability = (total_p1 * effectiveness_p1 * speed_advantage) / (total_p1 * effectiveness_p1 * speed_advantage + total_p2)
             # กำหนด winner_label จากการสุ่มตาม win_probability
             winner_label = 1 if np.random.rand() < win_probability else 0
@@ -81,7 +79,7 @@ for i in range(num_pokemon):
             winner_label, win_probability
         ])
 
-# ลดจำนวนคู่การต่อสู้ลงให้เหลือประมาณ 50,000-60,000 คู่
+# จำนวนคู่การต่อสู้ 60,000 คู่
 target_num = 60000
 if len(battle_data) > target_num:
     battle_data = random.sample(battle_data, target_num)
